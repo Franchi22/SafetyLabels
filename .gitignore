@@ -1,0 +1,38 @@
+﻿# === Build output ===
+bin/
+obj/
+**/bin/
+**/obj/
+
+# === Visual Studio / Rider / VS Code ===
+.vs/
+.idea/
+.vscode/
+*.user
+*.suo
+*.sln.docstates
+*.userosscache
+*.DotSettings.user
+
+# === Paquetes / publish / cache ===
+packages/
+*.nupkg
+*.Publish.xml
+*.cache
+*.tlog
+*.log
+
+# === Archivos del SO ===
+Thumbs.db
+.DS_Store
+
+# === Secretos locales / configuración sensible ===
+appsettings.*.local.json
+secrets.json
+
+# (Opcional) Ignora la BD local si usas SQLite de desarrollo:
+*.db
+
+# (Opcional) Ignora dumps/reportes
+*.heap
+*.dmp
