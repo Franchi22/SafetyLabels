@@ -1,4 +1,5 @@
-﻿using System;
+﻿// WpfClient/MainWindow.xaml.cs
+using System;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
@@ -6,49 +7,60 @@ using System.Text.Json;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using WpfClient.Services;
 
 namespace WpfClient
 {
     public partial class MainWindow : Window
     {
-        // ⚠ Ajusta ESTE valor al puerto real de tu API (mira Api/Properties/launchSettings.json).
-        private static readonly string BaseUrl = "https://localhost:7267";
-
         private static string? Token;
 
-        public MainWindow()
-        {
-            InitializeComponent();
-        }
+        public MainWindow() { InitializeComponent(); }
 
         private async void Login_Click(object sender, RoutedEventArgs e)
         {
             Msg.Text = "";
+            var user = (UserBox.Text ?? "").Trim();
+            var pass = PassBox.Password ?? "";
+
+            if (string.IsNullOrWhiteSpace(user) || string.IsNullOrWhiteSpace(pass))
+            {
+                Msg.Text = "Usuario y contraseña son obligatorios.";
+                return;
+            }
+
             try
             {
-                using var http = new HttpClient { BaseAddress = new Uri(BaseUrl) };
-                var payload = new { user = UserBox.Text, pass = PassBox.Password };
-                var res = await http.PostAsync("/auth/login",
-                    new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json"));
+                await ApiClient.EnsureInitializedAsync();
 
+                var payload = new { UserName = user, Password = pass };
+
+                var res = await ApiClient.PostJsonAsync("/auth/login", payload);
+                if (res.StatusCode == System.Net.HttpStatusCode.NotFound)
+                    res = await ApiClient.PostJsonAsync("/api/auth/login", payload);
+
+                var body = await res.Content.ReadAsStringAsync();
                 if (!res.IsSuccessStatusCode)
                 {
-                    Msg.Text = "Credenciales inválidas o API no disponible.";
+                    Msg.Text = $"[{(int)res.StatusCode}] {body}";
                     return;
                 }
 
-                var body = await res.Content.ReadAsStringAsync();
                 using var doc = JsonDocument.Parse(body);
-                Token = doc.RootElement.GetProperty("token").GetString();
+                Token = doc.RootElement.TryGetProperty("token", out var t) ? t.GetString() : null;
+
+                if (string.IsNullOrWhiteSpace(Token))
+                {
+                    Msg.Text = "Inicio correcto, pero no se recibió el token.";
+                    return;
+                }
 
                 MessageBox.Show("Bienvenido a Eaton MCB", "Acceso concedido",
                     MessageBoxButton.OK, MessageBoxImage.Information);
-
-                // TODO: abrir Dashboard
             }
             catch (HttpRequestException ex)
             {
-                Msg.Text = $"No se pudo conectar a la API ({BaseUrl}). Revisa que esté ejecutándose.\n{ex.Message}";
+                Msg.Text = $"No se pudo conectar a la API ({ApiClient.BaseUrl}). {ex.Message}";
             }
             catch (Exception ex)
             {
@@ -58,7 +70,7 @@ namespace WpfClient
 
         private void OpenRegister_Click(object sender, RoutedEventArgs e)
         {
-            var win = new RegisterWindow(BaseUrl) { Owner = this };
+            var win = new RegisterWindow { Owner = this };
             var ok = win.ShowDialog();
             if (ok == true && !string.IsNullOrWhiteSpace(win.NewUserName))
             {
@@ -75,25 +87,30 @@ namespace WpfClient
 
             try
             {
-                using var http = new HttpClient { BaseAddress = new Uri(BaseUrl) };
-                var payload = new { userOrEmail = value.Trim() };
-                var res = await http.PostAsync("/auth/forgot",
-                    new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json"));
+                await ApiClient.EnsureInitializedAsync();
+
+                var payload = new { UserOrEmail = value.Trim() };
+
+                var res = await ApiClient.PostJsonAsync("/auth/forgot", payload);
+                if (res.StatusCode == System.Net.HttpStatusCode.NotFound)
+                    res = await ApiClient.PostJsonAsync("/api/auth/forgot", payload);
 
                 var text = await res.Content.ReadAsStringAsync();
-
                 if (!res.IsSuccessStatusCode)
                 {
-                    Msg.Text = $"No se pudo procesar la solicitud: {text}";
+                    Msg.Text = $"[{(int)res.StatusCode}] {text}";
                     return;
                 }
 
-                MessageBox.Show("Si los datos existen, se enviaron instrucciones o una contraseña temporal.",
-                    "Solicitud recibida", MessageBoxButton.OK, MessageBoxImage.Information);
+                MessageBox.Show(
+                    "Si los datos existen, se enviaron instrucciones o una contraseña temporal.",
+                    "Solicitud recibida",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
             }
             catch (HttpRequestException ex)
             {
-                Msg.Text = $"No se pudo conectar a la API ({BaseUrl}). Verifica que esté ejecutándose.\n{ex.Message}";
+                Msg.Text = $"No se pudo conectar a la API ({ApiClient.BaseUrl}). {ex.Message}";
             }
             catch (Exception ex)
             {
@@ -101,7 +118,6 @@ namespace WpfClient
             }
         }
 
-        // Diálogo simple para pedir un valor
         private static (bool ok, string value) Prompt(string title, string message)
         {
             var win = new Window
@@ -133,15 +149,16 @@ namespace WpfClient
             return (ok, tb.Text ?? "");
         }
 
-        // Ejemplo para futuras llamadas autenticadas
-        private static async Task<string> GetAsync(string url)
+        private static async Task<string> GetAuthAsync(string path)
         {
-            using var http = new HttpClient { BaseAddress = new Uri(BaseUrl) };
-            http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", Token);
-            var r = await http.GetAsync(url);
-            r.EnsureSuccessStatusCode();
-            return await r.Content.ReadAsStringAsync();
+            await ApiClient.EnsureInitializedAsync();
+            using var req = new HttpRequestMessage(HttpMethod.Get, path);
+            if (!string.IsNullOrWhiteSpace(Token))
+                req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", Token);
+
+            var res = await ApiClient.Http.SendAsync(req);
+            res.EnsureSuccessStatusCode();
+            return await res.Content.ReadAsStringAsync();
         }
     }
 }
-

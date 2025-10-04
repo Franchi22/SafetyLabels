@@ -9,15 +9,22 @@ public static class IdentitySeeder
         var users = scope.ServiceProvider.GetRequiredService<UserManager<IdentityUser>>();
 
         foreach (var r in new[] { "Admin", "Auditor", "Operador" })
-            if (!await roles.RoleExistsAsync(r)) await roles.CreateAsync(new IdentityRole(r));
+            if (!await roles.RoleExistsAsync(r))
+                await roles.CreateAsync(new IdentityRole(r));
 
-        var adminEmail = "admin@safety.local";
+        var adminEmail = "admin@safety.local"; // Corregido: ahora tiene comillas
         var admin = await users.FindByEmailAsync(adminEmail);
         if (admin is null)
         {
-            admin = new IdentityUser { UserName = "admin", Email = adminEmail, EmailConfirmed = true };
+            admin = new IdentityUser
+            {
+                UserName = "admin",
+                Email = adminEmail,
+                EmailConfirmed = true
+            };
             await users.CreateAsync(admin, "Admin#2025!");
             await users.AddToRoleAsync(admin, "Admin");
         }
     }
 }
+
